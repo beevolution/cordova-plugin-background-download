@@ -27,6 +27,7 @@ import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -82,7 +83,9 @@ public class BackgroundDownload extends CordovaPlugin {
 
         private Uri targetFileUri;
         private Uri tempFileUri;
+        private String config;
         private String notificationTitle;
+        private JSONObject headers;
         private String uriMatcher;
         private String uriString;
         private CallbackContext callbackContext; // The callback context from which we were invoked.
@@ -96,20 +99,31 @@ public class BackgroundDownload extends CordovaPlugin {
                 uriMatcher = args.getString(2);
             }
 
+            String config = null;
             String notificationTitle = "org.apache.cordova.backgroundDownload plugin";
+            JSONObject headers = null;
             if (args.length() > 3 && !"null".equals(args.getString(3))) {
-                notificationTitle = args.getString(3);
+                config = args.getString(3);
+
+                JSONObject configObj = new JSONObject(config);
+                if(configObj.has("notificationTitle") && !"null".equals(configObj.getString("notificationTitle"))) {
+                    notificationTitle = configObj.getString("notificationTitle");
+                }
+                if(configObj.has("headers")) {
+                    headers = configObj.getJSONObject("headers");
+                }
             }
 
-            return new Download(args.get(0).toString(), args.get(1).toString(), notificationTitle, uriMatcher,
+            return new Download(args.get(0).toString(), args.get(1).toString(), notificationTitle, headers, uriMatcher,
                     callbackContext);
         }
 
-        public Download(String uriString, String targetFileUri, String notificationTitle,
+        public Download(String uriString, String targetFileUri, String notificationTitle, JSONObject headers,
                 String uriMatcher, CallbackContext callbackContext) {
             this.uriString = uriString;
             this.setTargetFileUri(targetFileUri);
             this.notificationTitle = notificationTitle;
+            this.headers = headers;
             this.uriMatcher = uriMatcher;
             this.setTempFileUri(Uri.fromFile(new File(android.os.Environment.getExternalStorageDirectory().getPath(),
                     Uri.parse(targetFileUri).getLastPathSegment() + "." + System.currentTimeMillis())).toString());
@@ -130,6 +144,10 @@ public class BackgroundDownload extends CordovaPlugin {
 
         public String getNotificationTitle() {
             return this.notificationTitle;
+        }
+
+        public JSONObject getHeaders() {
+            return this.headers;
         }
 
         public String getUriMatcher() {
@@ -250,6 +268,15 @@ public class BackgroundDownload extends CordovaPlugin {
                 // we use default settings for roaming and network type
                 // request.setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI | DownloadManager.Request.NETWORK_MOBILE);
                 // request.setAllowedOverRoaming(false);
+
+                // Add request headers if user supplied them
+                Iterator<?> keys = curDownload.getHeaders().keys();
+                while( keys.hasNext() ) {
+                    String key = (String)keys.next();
+                    if(curDownload.getHeaders().get(key) instanceof String) {
+                        request.addRequestHeader(key, curDownload.getHeaders().getString(key));
+                    }
+                }
 
                 request.setDestinationUri(curDownload.getTempFileUri());
 
